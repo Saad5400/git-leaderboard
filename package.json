@@ -4,7 +4,7 @@
   "description": "A colorful git contribution leaderboard for your repo",
   "type": "module",
   "bin": {
-    "git-leaderboard": "./bin/git-leaderboard"
+    "git-leaderboard": "bin/git-leaderboard"
   },
   "keywords": [
     "git",
