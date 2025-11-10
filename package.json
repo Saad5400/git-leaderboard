@@ -8,6 +8,10 @@
   },
   "author": "saad5400",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/saad5400/git-leaderboard.git"
+  },
   "dependencies": {
     "chalk": "^5.6.2"
   }
