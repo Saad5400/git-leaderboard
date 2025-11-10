@@ -1,0 +1,210 @@
+# Git Leaderboard 🏆
+
+A colorful git contribution leaderboard for your repository. Track and visualize contributions from all team members with detailed statistics.
+
+## Features
+
+- 📊 View detailed contribution statistics (lines added, removed, net changes)
+- 🔢 Track commit counts per contributor
+- 📅 Filter by date range
+- 🎯 Sort by different metrics (commits, added, removed, net lines)
+- 📋 Multiple output formats (table, JSON, CSV)
+- 🎨 Colorful terminal output
+- 🔍 Filter contributors (include/exclude)
+- 📧 Display author email addresses
+- ⚡ Fast and lightweight
+
+## Installation
+
+### Global Installation
+
+```bash
+npm install -g git-leaderboard
+```
+
+### Local Installation
+
+```bash
+npm install
+npm link
+```
+
+## Usage
+
+Navigate to any git repository and run:
+
+```bash
+git-leaderboard [options]
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `-V, --version` | Output the version number |
+| `-s, --sort <type>` | Sort by: `commits`, `added`, `removed`, `net` (default: `net`) |
+| `-l, --limit <number>` | Limit the number of contributors shown |
+| `-r, --reverse` | Reverse the sort order |
+| `--since <date>` | Show contributions since date (e.g., '2024-01-01', '1 week ago') |
+| `--until <date>` | Show contributions until date |
+| `-f, --format <type>` | Output format: `table`, `json`, `csv` (default: `table`) |
+| `--no-color` | Disable colored output |
+| `-e, --exclude <authors...>` | Exclude specific authors |
+| `-i, --include <authors...>` | Include only specific authors |
+| `--show-email` | Show author email addresses |
+| `--show-commits` | Show commit count in the table |
+| `-h, --help` | Display help for command |
+
+## Examples
+
+### Basic Usage
+
+Show all contributors with net line changes:
+```bash
+git-leaderboard
+```
+
+### Sort by Commits
+
+```bash
+git-leaderboard --sort commits --show-commits
+```
+
+### Show Top 5 Contributors
+
+```bash
+git-leaderboard --limit 5
+```
+
+### Filter by Date Range
+
+Show contributions from the last month:
+```bash
+git-leaderboard --since "1 month ago"
+```
+
+Show contributions for a specific year:
+```bash
+git-leaderboard --since "2024-01-01" --until "2024-12-31"
+```
+
+### Export to JSON
+
+```bash
+git-leaderboard --format json > stats.json
+```
+
+### Export to CSV
+
+```bash
+git-leaderboard --format csv > stats.csv
+```
+
+### Exclude Bot Accounts
+
+```bash
+git-leaderboard --exclude "dependabot,renovate"
+```
+
+### Show Only Specific Contributors
+
+```bash
+git-leaderboard --include "John,Sarah"
+```
+
+### Show with Email Addresses
+
+```bash
+git-leaderboard --show-email
+```
+
+### Sort by Lines Added (Descending)
+
+```bash
+git-leaderboard --sort added
+```
+
+### Sort by Commits (Ascending)
+
+```bash
+git-leaderboard --sort commits --reverse --show-commits
+```
+
+### Complete Example
+
+Show top 10 contributors by commits in the last 6 months with commit counts:
+```bash
+git-leaderboard --sort commits --show-commits --limit 10 --since "6 months ago"
+```
+
+## Output Examples
+
+### Table Format (Default)
+
+```
+No.  Contributor                       Commits      Added    Removed        Net
+1    John Doe                                45       5234        892       4342
+2    Jane Smith                              38       3421        654       2767
+3    Bob Johnson                             22       1876        432       1444
+
+Summary:
+Total                                       105      10531       1978       8553
+```
+
+### JSON Format
+
+```json
+[
+  {
+    "name": "John Doe",
+    "added": 5234,
+    "removed": 892,
+    "net": 4342,
+    "commits": 45
+  },
+  {
+    "name": "Jane Smith",
+    "added": 3421,
+    "removed": 654,
+    "net": 2767,
+    "commits": 38
+  }
+]
+```
+
+### CSV Format
+
+```csv
+No,Contributor,Commits,Added,Removed,Net
+1,"John Doe",45,5234,892,4342
+2,"Jane Smith",38,3421,654,2767
+```
+
+## Use Cases
+
+- 📈 **Team Performance**: Track team contributions over time
+- 🎯 **Sprint Reviews**: Analyze contributions during specific sprints
+- 📊 **Reports**: Generate contribution reports in various formats
+- 🏅 **Recognition**: Identify top contributors for recognition
+- 📅 **Historical Analysis**: Compare contributions across different time periods
+- 🔍 **Code Reviews**: Understand contribution patterns
+
+## Tips
+
+- Use `--since` and `--until` to analyze specific time periods
+- Combine `--sort` with `--show-commits` for detailed insights
+- Export to CSV for use in spreadsheets and further analysis
+- Use `--exclude` to filter out bot accounts (dependabot, renovate, etc.)
+- Pipe JSON output to tools like `jq` for advanced filtering
+
+## License
+
+MIT
+
+## Author
+
+Saad5400
+
+## Repository
+
+https://github.com/Saad5400/git-leaderboard

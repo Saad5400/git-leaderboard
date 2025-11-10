@@ -3,6 +3,37 @@
 // git-leaderboard - colorful git contribution summary
 import { execSync } from "child_process";
 import chalk from "chalk";
+import { Command } from "commander";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJson = JSON.parse(
+  readFileSync(join(__dirname, "../package.json"), "utf8")
+);
+
+const program = new Command();
+
+program
+  .name("git-leaderboard")
+  .description("A colorful git contribution leaderboard for your repo")
+  .version(packageJson.version)
+  .option("-s, --sort <type>", "sort by: commits, added, removed, net (default: net)", "net")
+  .option("-l, --limit <number>", "limit the number of contributors shown", parseInt)
+  .option("-r, --reverse", "reverse the sort order")
+  .option("--since <date>", "show contributions since date (e.g., '2024-01-01', '1 week ago')")
+  .option("--until <date>", "show contributions until date")
+  .option("-f, --format <type>", "output format: table, json, csv (default: table)", "table")
+  .option("--no-color", "disable colored output")
+  .option("-e, --exclude <authors...>", "exclude specific authors (comma-separated or multiple flags)")
+  .option("-i, --include <authors...>", "include only specific authors")
+  .option("--show-email", "show author email addresses")
+  .option("--show-commits", "show commit count in the table")
+  .parse(process.argv);
+
+const options = program.opts();
 
 function run(cmd) {
   try {
@@ -12,9 +43,20 @@ function run(cmd) {
   }
 }
 
+// Build date range filter
+let dateFilter = "";
+if (options.since) {
+  dateFilter += ` --since="${options.since}"`;
+}
+if (options.until) {
+  dateFilter += ` --until="${options.until}"`;
+}
+
+// Get authors
+const authorFormat = options.showEmail ? "%aN <%aE>" : "%aN";
 const authors = Array.from(
   new Set(
-    run("git log --format='%aN'")
+    run(`git log --format='${authorFormat}'${dateFilter}`)
       .split("\n")
       .filter(Boolean)
   )
@@ -25,31 +67,135 @@ if (!authors.length) {
   process.exit(1);
 }
 
-const stats = authors.map((name) => {
-  const lines = run(`git log --author="${name}" --pretty=tformat: --numstat`)
+// Apply include/exclude filters
+let filteredAuthors = authors;
+if (options.include) {
+  const includeList = Array.isArray(options.include) 
+    ? options.include 
+    : options.include.split(",").map(s => s.trim());
+  filteredAuthors = filteredAuthors.filter(author => 
+    includeList.some(inc => author.toLowerCase().includes(inc.toLowerCase()))
+  );
+}
+if (options.exclude) {
+  const excludeList = Array.isArray(options.exclude) 
+    ? options.exclude 
+    : options.exclude.split(",").map(s => s.trim());
+  filteredAuthors = filteredAuthors.filter(author => 
+    !excludeList.some(exc => author.toLowerCase().includes(exc.toLowerCase()))
+  );
+}
+
+if (!filteredAuthors.length) {
+  console.log(chalk.yellow("No contributors match the filter criteria."));
+  process.exit(0);
+}
+
+// Collect statistics
+const stats = filteredAuthors.map((name) => {
+  const authorName = name.replace(/'/g, "'\\''");
+  
+  // Get line stats
+  const lines = run(`git log --author="${authorName}" --pretty=tformat: --numstat${dateFilter}`)
     .split("\n")
     .filter((l) => /^\d+\s+\d+/.test(l))
     .map((l) => l.trim().split(/\s+/).map(Number));
+  
   const added = lines.reduce((sum, s) => sum + s[0], 0);
   const removed = lines.reduce((sum, s) => sum + s[1], 0);
-  return { name, added, removed, net: added - removed };
+  
+  // Get commit count if needed
+  const commits = options.showCommits || options.sort === "commits"
+    ? parseInt(run(`git rev-list --count --author="${authorName}" HEAD${dateFilter}`) || "0")
+    : 0;
+  
+  return { 
+    name, 
+    added, 
+    removed, 
+    net: added - removed,
+    commits
+  };
 });
 
-stats.sort((a, b) => b.net - a.net);
+// Sort statistics
+const sortFn = {
+  commits: (a, b) => b.commits - a.commits,
+  added: (a, b) => b.added - a.added,
+  removed: (a, b) => b.removed - a.removed,
+  net: (a, b) => b.net - a.net,
+}[options.sort] || ((a, b) => b.net - a.net);
 
-// Print leaderboard
-// console.clear();
-console.log(
-  chalk.bold.underline(
-    `${"No.".padEnd(4)} ${"Contributor".padEnd(25)} ${"Added".padStart(10)} ${"Removed".padStart(10)} ${"Net".padStart(10)}`
-  )
-);
+stats.sort(sortFn);
 
-stats.forEach((s, i) => {
-  console.log(
-    `${String(i + 1).padEnd(4)} ${s.name.padEnd(25)} ` +
-      `${chalk.green(String(s.added).padStart(10))} ` +
-      `${chalk.red(String(s.removed).padStart(10))} ` +
-      `${chalk.blue(String(s.net).padStart(10))}`
-  );
-});
+if (options.reverse) {
+  stats.reverse();
+}
+
+// Apply limit
+const displayStats = options.limit ? stats.slice(0, options.limit) : stats;
+
+// Output based on format
+if (options.format === "json") {
+  console.log(JSON.stringify(displayStats, null, 2));
+} else if (options.format === "csv") {
+  const headers = options.showCommits 
+    ? "No,Contributor,Commits,Added,Removed,Net"
+    : "No,Contributor,Added,Removed,Net";
+  console.log(headers);
+  displayStats.forEach((s, i) => {
+    const row = options.showCommits
+      ? `${i + 1},"${s.name}",${s.commits},${s.added},${s.removed},${s.net}`
+      : `${i + 1},"${s.name}",${s.added},${s.removed},${s.net}`;
+    console.log(row);
+  });
+} else {
+  // Table format (default)
+  const useColor = options.color !== false;
+  const chalkInstance = useColor ? chalk : {
+    bold: { underline: (s) => s },
+    green: (s) => s,
+    red: (s) => s,
+    blue: (s) => s,
+    yellow: (s) => s,
+  };
+  
+  // Build header
+  let header = `${"No.".padEnd(4)} ${"Contributor".padEnd(30)} `;
+  if (options.showCommits) {
+    header += `${"Commits".padStart(10)} `;
+  }
+  header += `${"Added".padStart(10)} ${"Removed".padStart(10)} ${"Net".padStart(10)}`;
+  
+  console.log(chalkInstance.bold.underline(header));
+  
+  // Print rows
+  displayStats.forEach((s, i) => {
+    let row = `${String(i + 1).padEnd(4)} ${s.name.padEnd(30)} `;
+    if (options.showCommits) {
+      row += `${chalkInstance.yellow(String(s.commits).padStart(10))} `;
+    }
+    row += `${chalkInstance.green(String(s.added).padStart(10))} `;
+    row += `${chalkInstance.red(String(s.removed).padStart(10))} `;
+    row += `${chalkInstance.blue(String(s.net).padStart(10))}`;
+    console.log(row);
+  });
+  
+  // Print summary
+  if (displayStats.length > 1) {
+    console.log("\n" + chalkInstance.bold.underline("Summary:"));
+    const totalCommits = displayStats.reduce((sum, s) => sum + s.commits, 0);
+    const totalAdded = displayStats.reduce((sum, s) => sum + s.added, 0);
+    const totalRemoved = displayStats.reduce((sum, s) => sum + s.removed, 0);
+    const totalNet = totalAdded - totalRemoved;
+    
+    let summaryRow = `${"Total".padEnd(35)} `;
+    if (options.showCommits) {
+      summaryRow += `${chalkInstance.yellow(String(totalCommits).padStart(10))} `;
+    }
+    summaryRow += `${chalkInstance.green(String(totalAdded).padStart(10))} `;
+    summaryRow += `${chalkInstance.red(String(totalRemoved).padStart(10))} `;
+    summaryRow += `${chalkInstance.blue(String(totalNet).padStart(10))}`;
+    console.log(summaryRow);
+  }
+}

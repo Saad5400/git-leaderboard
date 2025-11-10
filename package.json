@@ -6,13 +6,33 @@
   "bin": {
     "git-leaderboard": "./bin/git-leaderboard"
   },
+  "keywords": [
+    "git",
+    "leaderboard",
+    "contributions",
+    "statistics",
+    "analytics",
+    "cli",
+    "git-stats",
+    "git-log",
+    "team",
+    "collaboration"
+  ],
   "author": "saad5400",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/saad5400/git-leaderboard.git"
   },
+  "bugs": {
+    "url": "https://github.com/saad5400/git-leaderboard/issues"
+  },
+  "homepage": "https://github.com/saad5400/git-leaderboard#readme",
   "dependencies": {
-    "chalk": "^5.6.2"
+    "chalk": "^5.6.2",
+    "commander": "^14.0.2"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 }
