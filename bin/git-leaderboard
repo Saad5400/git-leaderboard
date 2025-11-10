@@ -1,0 +1,55 @@
+#!/usr/bin/env node
+
+// git-leaderboard - colorful git contribution summary
+import { execSync } from "child_process";
+import chalk from "chalk";
+
+function run(cmd) {
+  try {
+    return execSync(cmd, { encoding: "utf8" }).trim();
+  } catch {
+    return "";
+  }
+}
+
+const authors = Array.from(
+  new Set(
+    run("git log --format='%aN'")
+      .split("\n")
+      .filter(Boolean)
+  )
+);
+
+if (!authors.length) {
+  console.log(chalk.red("No git authors found. Are you in a Git repository?"));
+  process.exit(1);
+}
+
+const stats = authors.map((name) => {
+  const lines = run(`git log --author="${name}" --pretty=tformat: --numstat`)
+    .split("\n")
+    .filter((l) => /^\d+\s+\d+/.test(l))
+    .map((l) => l.trim().split(/\s+/).map(Number));
+  const added = lines.reduce((sum, s) => sum + s[0], 0);
+  const removed = lines.reduce((sum, s) => sum + s[1], 0);
+  return { name, added, removed, net: added - removed };
+});
+
+stats.sort((a, b) => b.net - a.net);
+
+// Print leaderboard
+console.clear();
+console.log(
+  chalk.bold.underline(
+    `${"No.".padEnd(4)} ${"Contributor".padEnd(25)} ${"Added".padStart(10)} ${"Removed".padStart(10)} ${"Net".padStart(10)}`
+  )
+);
+
+stats.forEach((s, i) => {
+  console.log(
+    `${String(i + 1).padEnd(4)} ${s.name.padEnd(25)} ` +
+      `${chalk.green(String(s.added).padStart(10))} ` +
+      `${chalk.red(String(s.removed).padStart(10))} ` +
+      `${chalk.blue(String(s.net).padStart(10))}`
+  );
+});
