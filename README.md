@@ -5,6 +5,7 @@ A colorful git contribution leaderboard for your repository. Track and visualize
 ## Features
 
 - 📊 View detailed contribution statistics (lines added, removed, net changes)
+- 📈 Visual bar chart showing relative contributions
 - 🔢 Track commit counts per contributor
 - 📅 Filter by date range
 - 🎯 Sort by different metrics (commits, added, removed, net lines)
@@ -53,6 +54,7 @@ git-leaderboard [options]
 | `-i, --include <authors...>` | Include only specific authors |
 | `--show-email` | Show author email addresses |
 | `--show-commits` | Show commit count in the table |
+| `--no-chart` | Hide the bar chart (shown by default) |
 | `-h, --help` | Display help for command |
 
 ## Examples
@@ -130,6 +132,12 @@ git-leaderboard --sort added
 git-leaderboard --sort commits --reverse --show-commits
 ```
 
+### Hide the Bar Chart
+
+```bash
+git-leaderboard --no-chart
+```
+
 ### Complete Example
 
 Show top 10 contributors by commits in the last 6 months with commit counts:
@@ -142,14 +150,16 @@ git-leaderboard --sort commits --show-commits --limit 10 --since "6 months ago"
 ### Table Format (Default)
 
 ```
-No.  Contributor                       Commits      Added    Removed        Net
-1    John Doe                                45       5234        892       4342
-2    Jane Smith                              38       3421        654       2767
-3    Bob Johnson                             22       1876        432       1444
+No.  Contributor                         Added    Removed        Net  Chart
+1    John Doe                             5234        892       4342  ████████████████████
+2    Jane Smith                           3421        654       2767  ████████████▌
+3    Bob Johnson                          1876        432       1444  ██████▌
 
 Summary:
-Total                                       105      10531       1978       8553
+Total                                    10531       1978       8553
 ```
+
+The bar chart visualizes the sorted metric (net changes by default). Use `--no-chart` to hide it.
 
 ### JSON Format
 
@@ -193,6 +203,7 @@ No,Contributor,Commits,Added,Removed,Net
 
 - Use `--since` and `--until` to analyze specific time periods
 - Combine `--sort` with `--show-commits` for detailed insights
+- The bar chart scales based on your sort metric (`--sort added` shows bars for lines added)
 - Export to CSV for use in spreadsheets and further analysis
 - Use `--exclude` to filter out bot accounts (dependabot, renovate, etc.)
 - Pipe JSON output to tools like `jq` for advanced filtering
