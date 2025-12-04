@@ -17,6 +17,12 @@ A colorful git contribution leaderboard for your repository. Track and visualize
 
 ## Installation
 
+### Run directly without installation
+
+```bash
+npx git-leaderboard
+```
+
 ### Global Installation
 
 ```bash
