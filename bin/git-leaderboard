@@ -31,6 +31,7 @@ program
   .option("-i, --include <authors...>", "include only specific authors")
   .option("--show-email", "show author email addresses")
   .option("--show-commits", "show commit count in the table")
+  .option("--no-chart", "hide the bar chart")
   .parse(process.argv);
 
 const options = program.opts();
@@ -158,7 +159,29 @@ if (options.format === "json") {
     red: (s) => s,
     blue: (s) => s,
     yellow: (s) => s,
+    cyan: (s) => s,
   };
+  
+  // Bar chart configuration
+  const showChart = options.chart !== false;
+  const chartWidth = 20;
+  const barChar = "█";
+  const barCharHalf = "▌";
+  
+  // Get max value for the sorted metric
+  const sortKey = options.sort || "net";
+  const maxValue = Math.max(...displayStats.map(s => Math.abs(s[sortKey])));
+  
+  // Generate bar for a value
+  function renderBar(value, max) {
+    if (max === 0) return "";
+    const absValue = Math.abs(value);
+    const ratio = absValue / max;
+    const fullBars = Math.floor(ratio * chartWidth);
+    const remainder = (ratio * chartWidth) - fullBars;
+    const halfBar = remainder >= 0.5 ? barCharHalf : "";
+    return barChar.repeat(fullBars) + halfBar;
+  }
   
   // Build header
   let header = `${"No.".padEnd(4)} ${"Contributor".padEnd(30)} `;
@@ -166,6 +189,9 @@ if (options.format === "json") {
     header += `${"Commits".padStart(10)} `;
   }
   header += `${"Added".padStart(10)} ${"Removed".padStart(10)} ${"Net".padStart(10)}`;
+  if (showChart) {
+    header += `  ${"Chart".padEnd(chartWidth)}`;
+  }
   
   console.log(chalkInstance.bold.underline(header));
   
@@ -178,6 +204,13 @@ if (options.format === "json") {
     row += `${chalkInstance.green(String(s.added).padStart(10))} `;
     row += `${chalkInstance.red(String(s.removed).padStart(10))} `;
     row += `${chalkInstance.blue(String(s.net).padStart(10))}`;
+    
+    if (showChart) {
+      const bar = renderBar(s[sortKey], maxValue);
+      const barColor = s[sortKey] >= 0 ? chalkInstance.cyan : chalkInstance.red;
+      row += `  ${barColor(bar)}`;
+    }
+    
     console.log(row);
   });
   
