@@ -13,6 +13,7 @@ A colorful git contribution leaderboard for your repository. Track and visualize
 - 🎨 Colorful terminal output
 - 🔍 Filter contributors (include/exclude)
 - 📧 Display author email addresses
+- 🤝 **Intelligent author name grouping** - Automatically detect and merge similar author names
 - ⚡ Fast and lightweight
 
 ## Installation
@@ -61,6 +62,8 @@ git-leaderboard [options]
 | `--show-email` | Show author email addresses |
 | `--show-commits` | Show commit count in the table |
 | `--no-chart` | Hide the bar chart (shown by default) |
+| `--group-similar` | Automatically group similar author names |
+| `--similarity-threshold <number>` | Minimum similarity score for grouping (0-1, default: 0.4) |
 | `-h, --help` | Display help for command |
 
 ## Examples
@@ -144,6 +147,18 @@ git-leaderboard --sort commits --reverse --show-commits
 git-leaderboard --no-chart
 ```
 
+### Group Similar Author Names
+
+Interactively review and group similar author names (e.g., "john doe" and "John Doe"):
+```bash
+git-leaderboard --similarity-threshold 0.7
+```
+
+Automatically group similar names without prompting:
+```bash
+git-leaderboard --group-similar --similarity-threshold 0.4
+```
+
 ### Complete Example
 
 Show top 10 contributors by commits in the last 6 months with commit counts:
@@ -205,6 +220,43 @@ No,Contributor,Commits,Added,Removed,Net
 - 📅 **Historical Analysis**: Compare contributions across different time periods
 - 🔍 **Code Reviews**: Understand contribution patterns
 
+## Author Name Grouping
+
+Git-leaderboard can intelligently detect and merge similar author names using Levenshtein distance. This is useful when contributors have multiple name variations in git history.
+
+### How it works
+
+The tool compares all author names and calculates a similarity score (0-1, where 1 is identical). Names exceeding the threshold are flagged as similar.
+
+**Examples of names that can be grouped:**
+- "ahmed farghaly" and "ahmedfarghaly"
+- "Abdulmajeed Jamaan" and "Abdulmajeed-Jamaan"
+- "Saad5400" and "Saad Batwa" (with lower threshold)
+
+### Interactive Mode
+
+Without `--group-similar`, you'll be prompted for each similar pair:
+```
+Similar authors detected (similarity: 85.7%):
+  1) ahmed farghaly
+  2) ahmedfarghaly
+Group these authors together? (Y/n):
+```
+Press Enter (default: yes) or type 'n' to skip.
+
+### Automatic Mode
+
+Use `--group-similar` to automatically merge all similar names:
+```bash
+git-leaderboard --group-similar --similarity-threshold 0.5
+```
+
+### Adjusting Sensitivity
+
+- **Higher threshold (0.7-0.9)**: Only very similar names (typos, capitalization)
+- **Medium threshold (0.4-0.6)**: Catches variations with spaces, punctuation
+- **Lower threshold (0.2-0.3)**: More aggressive, may group unrelated names
+
 ## Tips
 
 - Use `--since` and `--until` to analyze specific time periods
@@ -213,6 +265,7 @@ No,Contributor,Commits,Added,Removed,Net
 - Export to CSV for use in spreadsheets and further analysis
 - Use `--exclude` to filter out bot accounts (dependabot, renovate, etc.)
 - Pipe JSON output to tools like `jq` for advanced filtering
+- Start with interactive mode (no `--group-similar`) to review similar names before auto-grouping
 
 ## License
 
