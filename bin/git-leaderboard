@@ -7,6 +7,7 @@ import { Command } from "commander";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import { createInterface } from "readline";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -32,6 +33,8 @@ program
   .option("--show-email", "show author email addresses")
   .option("--show-commits", "show commit count in the table")
   .option("--no-chart", "hide the bar chart")
+  .option("--group-similar", "automatically group similar author names")
+  .option("--similarity-threshold <number>", "minimum similarity score for grouping (0-1, higher = more similar, default: 0.4)", parseFloat, 0.4)
   .parse(process.argv);
 
 const options = program.opts();
@@ -42,6 +45,60 @@ function run(cmd) {
   } catch {
     return "";
   }
+}
+
+// Calculate Levenshtein distance between two strings
+function levenshteinDistance(str1, str2) {
+  const m = str1.length;
+  const n = str2.length;
+  const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (str1[i - 1] === str2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = Math.min(
+          dp[i - 1][j] + 1,
+          dp[i][j - 1] + 1,
+          dp[i - 1][j - 1] + 1
+        );
+      }
+    }
+  }
+
+  return dp[m][n];
+}
+
+// Calculate normalized similarity score (0-1, where 1 is identical)
+function similarityScore(str1, str2) {
+  const s1 = str1.toLowerCase().trim();
+  const s2 = str2.toLowerCase().trim();
+
+  if (s1 === s2) return 1;
+
+  const distance = levenshteinDistance(s1, s2);
+  const maxLen = Math.max(s1.length, s2.length);
+
+  return 1 - (distance / maxLen);
+}
+
+// Ask user for confirmation
+function askQuestion(query) {
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+
+  return new Promise(resolve => {
+    rl.question(query, answer => {
+      rl.close();
+      resolve(answer.trim().toLowerCase());
+    });
+  });
 }
 
 // Build date range filter
@@ -92,143 +149,234 @@ if (!filteredAuthors.length) {
   process.exit(0);
 }
 
-// Collect statistics
-const stats = filteredAuthors.map((name) => {
-  const authorName = name.replace(/'/g, "'\\''");
-  
-  // Get line stats
-  const lines = run(`git log --author="${authorName}" --pretty=tformat: --numstat${dateFilter}`)
-    .split("\n")
-    .filter((l) => /^\d+\s+\d+/.test(l))
-    .map((l) => l.trim().split(/\s+/).map(Number));
-  
-  const added = lines.reduce((sum, s) => sum + s[0], 0);
-  const removed = lines.reduce((sum, s) => sum + s[1], 0);
-  
-  // Get commit count if needed
-  const commits = options.showCommits || options.sort === "commits"
-    ? parseInt(run(`git rev-list --count --author="${authorName}" HEAD${dateFilter}`) || "0")
-    : 0;
-  
-  return { 
-    name, 
-    added, 
-    removed, 
-    net: added - removed,
-    commits
-  };
-});
+// Main async function to handle similarity detection
+async function main() {
+  // Collect statistics
+  const stats = filteredAuthors.map((name) => {
+    const authorName = name.replace(/'/g, "'\\''");
 
-// Sort statistics
-const sortFn = {
-  commits: (a, b) => b.commits - a.commits,
-  added: (a, b) => b.added - a.added,
-  removed: (a, b) => b.removed - a.removed,
-  net: (a, b) => b.net - a.net,
-}[options.sort] || ((a, b) => b.net - a.net);
+    // Get line stats
+    const lines = run(`git log --author="${authorName}" --pretty=tformat: --numstat${dateFilter}`)
+      .split("\n")
+      .filter((l) => /^\d+\s+\d+/.test(l))
+      .map((l) => l.trim().split(/\s+/).map(Number));
 
-stats.sort(sortFn);
+    const added = lines.reduce((sum, s) => sum + s[0], 0);
+    const removed = lines.reduce((sum, s) => sum + s[1], 0);
 
-if (options.reverse) {
-  stats.reverse();
-}
+    // Get commit count if needed
+    const commits = options.showCommits || options.sort === "commits"
+      ? parseInt(run(`git rev-list --count --author="${authorName}" HEAD${dateFilter}`) || "0")
+      : 0;
 
-// Apply limit
-const displayStats = options.limit ? stats.slice(0, options.limit) : stats;
-
-// Output based on format
-if (options.format === "json") {
-  console.log(JSON.stringify(displayStats, null, 2));
-} else if (options.format === "csv") {
-  const headers = options.showCommits 
-    ? "No,Contributor,Commits,Added,Removed,Net"
-    : "No,Contributor,Added,Removed,Net";
-  console.log(headers);
-  displayStats.forEach((s, i) => {
-    const row = options.showCommits
-      ? `${i + 1},"${s.name}",${s.commits},${s.added},${s.removed},${s.net}`
-      : `${i + 1},"${s.name}",${s.added},${s.removed},${s.net}`;
-    console.log(row);
+    return {
+      name,
+      added,
+      removed,
+      net: added - removed,
+      commits
+    };
   });
-} else {
-  // Table format (default)
-  const useColor = options.color !== false;
-  const chalkInstance = useColor ? chalk : {
-    bold: { underline: (s) => s },
-    green: (s) => s,
-    red: (s) => s,
-    blue: (s) => s,
-    yellow: (s) => s,
-    cyan: (s) => s,
-  };
-  
-  // Bar chart configuration
-  const showChart = options.chart !== false;
-  const chartWidth = 20;
-  const barChar = "█";
-  const barCharHalf = "▌";
-  
-  // Get max value for the sorted metric
-  const sortKey = options.sort || "net";
-  const maxValue = Math.max(...displayStats.map(s => Math.abs(s[sortKey])));
-  
-  // Generate bar for a value
-  function renderBar(value, max) {
-    if (max === 0) return "";
-    const absValue = Math.abs(value);
-    const ratio = absValue / max;
-    const fullBars = Math.floor(ratio * chartWidth);
-    const remainder = (ratio * chartWidth) - fullBars;
-    const halfBar = remainder >= 0.5 ? barCharHalf : "";
-    return barChar.repeat(fullBars) + halfBar;
-  }
-  
-  // Build header
-  let header = `${"No.".padEnd(4)} ${"Contributor".padEnd(30)} `;
-  if (options.showCommits) {
-    header += `${"Commits".padStart(10)} `;
-  }
-  header += `${"Added".padStart(10)} ${"Removed".padStart(10)} ${"Net".padStart(10)}`;
-  if (showChart) {
-    header += `  ${"Chart".padEnd(chartWidth)}`;
-  }
-  
-  console.log(chalkInstance.bold.underline(header));
-  
-  // Print rows
-  displayStats.forEach((s, i) => {
-    let row = `${String(i + 1).padEnd(4)} ${s.name.padEnd(30)} `;
-    if (options.showCommits) {
-      row += `${chalkInstance.yellow(String(s.commits).padStart(10))} `;
+
+  // Detect and group similar authors
+  const threshold = options.similarityThreshold;
+  const authorMap = new Map();
+  const processed = new Set();
+
+  // Initialize map with all authors
+  stats.forEach(stat => {
+    authorMap.set(stat.name, stat.name);
+  });
+
+  // Find similar author pairs
+  for (let i = 0; i < stats.length; i++) {
+    if (processed.has(stats[i].name)) continue;
+
+    for (let j = i + 1; j < stats.length; j++) {
+      if (processed.has(stats[j].name)) continue;
+
+      const score = similarityScore(stats[i].name, stats[j].name);
+
+      if (score >= threshold) {
+        const name1 = stats[i].name;
+        const name2 = stats[j].name;
+
+        // Check if already grouped
+        const canonical1 = authorMap.get(name1);
+        const canonical2 = authorMap.get(name2);
+
+        if (canonical1 !== canonical2) {
+          let shouldMerge = options.groupSimilar;
+
+          if (!options.groupSimilar) {
+            // Interactive mode - ask user
+            console.log(chalk.yellow(`\nSimilar authors detected (similarity: ${(score * 100).toFixed(1)}%):`));
+            console.log(chalk.cyan(`  1) ${name1}`));
+            console.log(chalk.cyan(`  2) ${name2}`));
+            const answer = await askQuestion(chalk.white("Group these authors together? (Y/n): "));
+            shouldMerge = answer === "" || answer === "y" || answer === "yes";
+          }
+
+          if (shouldMerge) {
+            // Use the first occurrence as canonical name
+            const canonicalName = stats.findIndex(s => s.name === canonical1) < stats.findIndex(s => s.name === canonical2) ? canonical1 : canonical2;
+
+            // Update mapping
+            authorMap.set(name1, canonicalName);
+            authorMap.set(name2, canonicalName);
+
+            if (options.groupSimilar) {
+              console.log(chalk.green(`✓ Grouped: "${name1}" and "${name2}" as "${canonicalName}"`));
+            } else {
+              console.log(chalk.green(`✓ Grouped as: "${canonicalName}"`));
+            }
+          }
+        }
+      }
     }
-    row += `${chalkInstance.green(String(s.added).padStart(10))} `;
-    row += `${chalkInstance.red(String(s.removed).padStart(10))} `;
-    row += `${chalkInstance.blue(String(s.net).padStart(10))}`;
-    
+  }
+
+  // Merge stats for grouped authors
+  const mergedStats = new Map();
+  stats.forEach(stat => {
+    const canonicalName = authorMap.get(stat.name);
+
+    if (mergedStats.has(canonicalName)) {
+      const existing = mergedStats.get(canonicalName);
+      existing.added += stat.added;
+      existing.removed += stat.removed;
+      existing.net += stat.net;
+      existing.commits += stat.commits;
+    } else {
+      mergedStats.set(canonicalName, {
+        name: canonicalName,
+        added: stat.added,
+        removed: stat.removed,
+        net: stat.net,
+        commits: stat.commits
+      });
+    }
+  });
+
+  const finalStats = Array.from(mergedStats.values());
+
+  // Sort statistics
+  const sortFn = {
+    commits: (a, b) => b.commits - a.commits,
+    added: (a, b) => b.added - a.added,
+    removed: (a, b) => b.removed - a.removed,
+    net: (a, b) => b.net - a.net,
+  }[options.sort] || ((a, b) => b.net - a.net);
+
+  finalStats.sort(sortFn);
+
+  if (options.reverse) {
+    finalStats.reverse();
+  }
+
+  // Apply limit
+  const displayStats = options.limit ? finalStats.slice(0, options.limit) : finalStats;
+
+  // Output based on format
+  if (options.format === "json") {
+    console.log(JSON.stringify(displayStats, null, 2));
+  } else if (options.format === "csv") {
+    const headers = options.showCommits
+      ? "No,Contributor,Commits,Added,Removed,Net"
+      : "No,Contributor,Added,Removed,Net";
+    console.log(headers);
+    displayStats.forEach((s, i) => {
+      const row = options.showCommits
+        ? `${i + 1},"${s.name}",${s.commits},${s.added},${s.removed},${s.net}`
+        : `${i + 1},"${s.name}",${s.added},${s.removed},${s.net}`;
+      console.log(row);
+    });
+  } else {
+    // Table format (default)
+    const useColor = options.color !== false;
+    const chalkInstance = useColor ? chalk : {
+      bold: { underline: (s) => s },
+      green: (s) => s,
+      red: (s) => s,
+      blue: (s) => s,
+      yellow: (s) => s,
+      cyan: (s) => s,
+    };
+
+    // Bar chart configuration
+    const showChart = options.chart !== false;
+    const chartWidth = 20;
+    const barChar = "█";
+    const barCharHalf = "▌";
+
+    // Get max value for the sorted metric
+    const sortKey = options.sort || "net";
+    const maxValue = Math.max(...displayStats.map(s => Math.abs(s[sortKey])));
+
+    // Generate bar for a value
+    function renderBar(value, max) {
+      if (max === 0) return "";
+      const absValue = Math.abs(value);
+      const ratio = absValue / max;
+      const fullBars = Math.floor(ratio * chartWidth);
+      const remainder = (ratio * chartWidth) - fullBars;
+      const halfBar = remainder >= 0.5 ? barCharHalf : "";
+      return barChar.repeat(fullBars) + halfBar;
+    }
+
+    // Build header
+    let header = `${"No.".padEnd(4)} ${"Contributor".padEnd(30)} `;
+    if (options.showCommits) {
+      header += `${"Commits".padStart(10)} `;
+    }
+    header += `${"Added".padStart(10)} ${"Removed".padStart(10)} ${"Net".padStart(10)}`;
     if (showChart) {
-      const bar = renderBar(s[sortKey], maxValue);
-      const barColor = s[sortKey] >= 0 ? chalkInstance.cyan : chalkInstance.red;
-      row += `  ${barColor(bar)}`;
+      header += `  ${"Chart".padEnd(chartWidth)}`;
     }
-    
-    console.log(row);
-  });
-  
-  // Print summary
-  if (displayStats.length > 1) {
-    console.log("\n" + chalkInstance.bold.underline("Summary:"));
-    const totalCommits = displayStats.reduce((sum, s) => sum + s.commits, 0);
-    const totalAdded = displayStats.reduce((sum, s) => sum + s.added, 0);
-    const totalRemoved = displayStats.reduce((sum, s) => sum + s.removed, 0);
-    const totalNet = totalAdded - totalRemoved;
-    
-    let summaryRow = `${"Total".padEnd(35)} `;
-    if (options.showCommits) {
-      summaryRow += `${chalkInstance.yellow(String(totalCommits).padStart(10))} `;
+
+    console.log(chalkInstance.bold.underline(header));
+
+    // Print rows
+    displayStats.forEach((s, i) => {
+      let row = `${String(i + 1).padEnd(4)} ${s.name.padEnd(30)} `;
+      if (options.showCommits) {
+        row += `${chalkInstance.yellow(String(s.commits).padStart(10))} `;
+      }
+      row += `${chalkInstance.green(String(s.added).padStart(10))} `;
+      row += `${chalkInstance.red(String(s.removed).padStart(10))} `;
+      row += `${chalkInstance.blue(String(s.net).padStart(10))}`;
+
+      if (showChart) {
+        const bar = renderBar(s[sortKey], maxValue);
+        const barColor = s[sortKey] >= 0 ? chalkInstance.cyan : chalkInstance.red;
+        row += `  ${barColor(bar)}`;
+      }
+
+      console.log(row);
+    });
+
+    // Print summary
+    if (displayStats.length > 1) {
+      console.log("\n" + chalkInstance.bold.underline("Summary:"));
+      const totalCommits = displayStats.reduce((sum, s) => sum + s.commits, 0);
+      const totalAdded = displayStats.reduce((sum, s) => sum + s.added, 0);
+      const totalRemoved = displayStats.reduce((sum, s) => sum + s.removed, 0);
+      const totalNet = totalAdded - totalRemoved;
+
+      let summaryRow = `${"Total".padEnd(35)} `;
+      if (options.showCommits) {
+        summaryRow += `${chalkInstance.yellow(String(totalCommits).padStart(10))} `;
+      }
+      summaryRow += `${chalkInstance.green(String(totalAdded).padStart(10))} `;
+      summaryRow += `${chalkInstance.red(String(totalRemoved).padStart(10))} `;
+      summaryRow += `${chalkInstance.blue(String(totalNet).padStart(10))}`;
+      console.log(summaryRow);
     }
-    summaryRow += `${chalkInstance.green(String(totalAdded).padStart(10))} `;
-    summaryRow += `${chalkInstance.red(String(totalRemoved).padStart(10))} `;
-    summaryRow += `${chalkInstance.blue(String(totalNet).padStart(10))}`;
-    console.log(summaryRow);
   }
 }
+
+// Run the main function
+main().catch(err => {
+  console.error(chalk.red("Error:"), err.message);
+  process.exit(1);
+});
